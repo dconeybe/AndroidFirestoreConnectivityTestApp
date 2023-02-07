@@ -53,6 +53,7 @@ class MainActivity : AppCompatActivity(), MainActivityInterface {
     setupActionBarWithNavController(navController, appBarConfiguration)
 
     binding.fab.setOnClickListener {
+      logger.log("FAB clicked; firstFragment=$firstFragment")
       firstFragment?.onFabClick()
     }
   }

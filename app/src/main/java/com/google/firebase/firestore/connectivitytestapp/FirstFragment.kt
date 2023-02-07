@@ -116,6 +116,7 @@ class FirstFragment : Fragment(), FirstFragmentInterface {
 
   @MainThread
   override fun onFabClick() {
+    logger.log("onFabClick()")
     workHandler.post {
       if (serviceConnection.isTestRunning()) {
         serviceConnection.cancelTest()
@@ -136,6 +137,7 @@ private class ConnectivityTestServiceConnection : ServiceConnection {
     logger.onServiceConnected(name, service)
     val connection = IMainService.Stub.asInterface(service)
     this.connection = connection
+    Thread() { startTest() }.start()
   }
 
   override fun onServiceDisconnected(name: ComponentName?) {
