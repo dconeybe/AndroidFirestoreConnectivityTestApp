@@ -14,15 +14,8 @@
 
 package com.google.firebase.firestore.connectivitytestapp;
 
-interface IMainService {
+oneway interface IMainServiceListener {
 
-  oneway void startConnectivityTest();
-  oneway void cancelConnectivityTest();
-
-  boolean isConnectivityTestRunning();
-  long getRunningConnectivityTestId();
-
-  oneway void addListener(com.google.firebase.firestore.connectivitytestapp.IMainServiceListener listener);
-  oneway void removeListener(com.google.firebase.firestore.connectivitytestapp.IMainServiceListener listener);
+  void onConnectivityTestRunningStateChange();
 
 }

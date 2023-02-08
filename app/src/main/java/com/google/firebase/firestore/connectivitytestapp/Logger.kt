@@ -21,6 +21,7 @@ import android.content.Intent
 import android.content.pm.ProviderInfo
 import android.os.IBinder
 import android.util.Log
+import android.view.MenuItem
 
 private const val TAG = "FstConnTestApp";
 
@@ -42,12 +43,40 @@ class Logger(val tag: String) {
     log("onStop()")
   }
 
+  fun onResume() {
+    log("onResume()")
+  }
+
+  fun onPause() {
+    log("onPause()")
+  }
+
   fun onAttach(context: Context) {
     log("onAttach() context=${context::class.qualifiedName}")
   }
 
   fun onDetach() {
     log("onDetach()")
+  }
+
+  fun onCreateView() {
+    log("onCreateView()")
+  }
+
+  fun onViewCreated() {
+    log("onViewCreated()")
+  }
+
+  fun onDestroyView() {
+    log("onDestroyView()")
+  }
+
+  fun onOptionsItemSelected(item: MenuItem) {
+    log("onOptionsItemSelected() item=$item")
+  }
+
+  fun onSupportNavigateUp() {
+    log("onSupportNavigateUp()")
   }
 
   fun onStartCommand(intent: Intent?, flags: Int, startId: Int) {
@@ -81,6 +110,10 @@ class Logger(val tag: String) {
 
   fun log(message: String) {
     Log.i(TAG, "$tag $message")
+  }
+
+  fun warn(message: String) {
+    Log.w(TAG, "$tag $message")
   }
 
   fun logException(message: String, exception: Exception) {

@@ -14,30 +14,17 @@
 
 package com.google.firebase.firestore.connectivitytestapp
 
-import android.content.ComponentName
-import android.content.Intent
-import android.content.ServiceConnection
 import android.os.Bundle
-import android.os.IBinder
-import com.google.android.material.snackbar.Snackbar
 import androidx.appcompat.app.AppCompatActivity
-import androidx.navigation.findNavController
-import androidx.navigation.ui.AppBarConfiguration
-import androidx.navigation.ui.navigateUp
-import androidx.navigation.ui.setupActionBarWithNavController
 import android.view.Menu
 import android.view.MenuItem
-import androidx.annotation.MainThread
 import com.google.firebase.firestore.connectivitytestapp.databinding.ActivityMainBinding
 
-class MainActivity : AppCompatActivity(), MainActivityInterface {
+class MainActivity : AppCompatActivity() {
 
-  private val logger = Logger("MainActivity");
+  private val logger = Logger("MainActivity")
 
-  private lateinit var appBarConfiguration: AppBarConfiguration
   private lateinit var binding: ActivityMainBinding
-
-  private var firstFragment: FirstFragmentInterface? = null
 
   override fun onCreate(savedInstanceState: Bundle?) {
     logger.onCreate()
@@ -47,15 +34,6 @@ class MainActivity : AppCompatActivity(), MainActivityInterface {
     setContentView(binding.root)
 
     setSupportActionBar(binding.toolbar)
-
-    val navController = findNavController(R.id.nav_host_fragment_content_main)
-    appBarConfiguration = AppBarConfiguration(navController.graph)
-    setupActionBarWithNavController(navController, appBarConfiguration)
-
-    binding.fab.setOnClickListener {
-      logger.log("FAB clicked; firstFragment=$firstFragment")
-      firstFragment?.onFabClick()
-    }
   }
 
   override fun onDestroy() {
@@ -73,6 +51,7 @@ class MainActivity : AppCompatActivity(), MainActivityInterface {
     // Handle action bar item clicks here. The action bar will
     // automatically handle clicks on the Home/Up button, so long
     // as you specify a parent activity in AndroidManifest.xml.
+    logger.onOptionsItemSelected(item)
     return when (item.itemId) {
       R.id.action_settings -> true
       else -> super.onOptionsItemSelected(item)
@@ -80,32 +59,8 @@ class MainActivity : AppCompatActivity(), MainActivityInterface {
   }
 
   override fun onSupportNavigateUp(): Boolean {
-    val navController = findNavController(R.id.nav_host_fragment_content_main)
-    return navController.navigateUp(appBarConfiguration)
-        || super.onSupportNavigateUp()
+    logger.onSupportNavigateUp()
+    return super.onSupportNavigateUp()
   }
-
-
-  @MainThread
-  override fun setFirstFragment(fragment: FirstFragmentInterface) {
-    this.firstFragment = fragment
-  }
-
-  @MainThread
-  override fun clearFirstFragment(fragment: FirstFragmentInterface) {
-    if (this.firstFragment === fragment) {
-      this.firstFragment = null
-    }
-  }
-
-}
-
-interface MainActivityInterface {
-
-  @MainThread
-  fun setFirstFragment(fragment: FirstFragmentInterface)
-
-  @MainThread
-  fun clearFirstFragment(fragment: FirstFragmentInterface)
 
 }

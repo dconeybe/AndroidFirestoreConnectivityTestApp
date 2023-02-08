@@ -21,11 +21,8 @@ import androidx.annotation.AnyThread
 import androidx.annotation.MainThread
 import java.lang.ref.WeakReference
 import java.util.concurrent.atomic.AtomicBoolean
-
-val ACTION_START_TEST = "com.google.firebase.firestore.connectivitytestapp.MainService.ACTION_START_TEST"
-
-private val TOKEN = Binder()
-private val EXTRA_TOKEN = "com.google.firebase.firestore.connectivitytestapp.MainService.EXTRA_TOKEN"
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 class MainService : Service() {
 
@@ -35,18 +32,21 @@ class MainService : Service() {
   private lateinit var mainServiceImpl: IMainServiceImpl
   private lateinit var connectivityTest: ConnectivityTest
   private var lastStartId: Int? = null
+  private val listeners = mutableMapOf<Binder, IMainServiceListener>()
 
   override fun onCreate() {
     logger.onCreate()
     super.onCreate()
     selfRef = WeakReference(this)
-    mainServiceImpl = IMainServiceImpl(Handler(Looper.getMainLooper()), selfRef)
+    val mainHandler = Handler(Looper.getMainLooper())
+    mainServiceImpl = IMainServiceImpl(mainHandler, selfRef)
     connectivityTest = ConnectivityTest(applicationContext)
-    connectivityTest.onCreate()
+    connectivityTest.onCreate(ConnectivityTestListenerImpl(mainHandler, selfRef))
   }
 
   override fun onDestroy() {
     logger.onDestroy()
+    listeners.clear()
     connectivityTest.onDestroy()
     selfRef.clear()
     super.onDestroy()
@@ -77,10 +77,10 @@ class MainService : Service() {
   internal fun startConnectivityTest() {
     logger.log("startConnectivityTest()")
     if (connectivityTest.running) {
-      return;
+      return
     }
 
-    val intent = Intent(this, this::class.java);
+    val intent = Intent(this, this::class.java)
     val componentName = startService(intent)
     if (componentName === null) {
       throw IllegalStateException("startService($intent) returned null")
@@ -101,22 +101,67 @@ class MainService : Service() {
     logger.log("isConnectivityTestRunning()")
     return connectivityTest.running
   }
+
+  @MainThread
+  internal fun getRunningConnectivityTestId(): Long {
+    logger.log("getRunningConnectivityTestId()")
+    return connectivityTest.runningTestId ?: -1
+  }
+
+  @MainThread
+  internal fun addListener(listener: IMainServiceListener) {
+    listeners[Binder()] = listener
+  }
+
+  @MainThread
+  internal fun removeListener(listener: IMainServiceListener?) {
+    for (entry in listeners.entries) {
+      if (entry.value === listener) {
+        listeners.remove(entry.key)
+        break
+      }
+    }
+  }
+
+  @MainThread
+  private fun notifyListeners(op: (IMainServiceListener) -> Unit) {
+    var deadListenerKeys: MutableList<Binder>? = null
+
+    listeners.forEach { (key, listener) ->
+      try {
+        op(listener)
+      } catch (e: RemoteException) {
+        logger.warn("removing listener $listener because notifying it failed with $e")
+        if (deadListenerKeys === null) {
+          deadListenerKeys = mutableListOf()
+        }
+        deadListenerKeys!!.add(key)
+      }
+    }
+
+    deadListenerKeys?.forEach { listeners.remove(it) }
+  }
+
+  @MainThread
+  internal fun onConnectivityTestRunningStateChange() {
+    notifyListeners { listener -> listener.onConnectivityTestRunningStateChange() }
+  }
 }
 
 private class IMainServiceImpl(val mainHandler: Handler, val serviceRef: WeakReference<MainService>) : IMainService.Stub() {
 
-  private val logger = Logger("IMainServiceImpl");
+  private val logger = Logger("IMainServiceImpl")
 
   @AnyThread
   override fun startConnectivityTest() {
     logger.log("startConnectivityTest()")
-    runOnMainThreadWithService { it.startConnectivityTest() }
+    runAsyncOnMainThreadWithService { it.startConnectivityTest() }
   }
 
   @AnyThread
   override fun cancelConnectivityTest() {
     logger.log("cancelConnectivityTest()")
-    runOnMainThreadWithService { it.cancelConnectivityTest() }
+    runAsyncOnMainThreadWithService { it.cancelConnectivityTest() }
   }
 
   @AnyThread
@@ -124,7 +169,7 @@ private class IMainServiceImpl(val mainHandler: Handler, val serviceRef: WeakRef
     logger.log("isConnectivityTestRunning()")
     val condition = ConditionVariable()
     val result = AtomicBoolean(false)
-    runOnMainThreadWithService {
+    runAsyncOnMainThreadWithService {
       result.set(it.isConnectivityTestRunning())
       condition.open()
     }
@@ -132,41 +177,49 @@ private class IMainServiceImpl(val mainHandler: Handler, val serviceRef: WeakRef
     return result.get()
   }
 
+  override fun getRunningConnectivityTestId(): Long {
+    logger.log("getRunningConnectivityTestId()")
+    val condition = ConditionVariable()
+    val result = AtomicLong(-1)
+    runAsyncOnMainThreadWithService {
+      result.set(it.getRunningConnectivityTestId())
+      condition.open()
+    }
+    condition.block()
+    return result.get()
+  }
+
+  override fun addListener(listener: IMainServiceListener?) {
+    if (listener === null) {
+      throw NullPointerException("listener==null")
+    }
+    runAsyncOnMainThreadWithService { it.addListener(listener) }
+  }
+
+  override fun removeListener(listener: IMainServiceListener?) {
+    runAsyncOnMainThreadWithService { it.removeListener(listener) }
+  }
+
   @AnyThread
-  private fun runOnMainThreadWithService(operation: (MainService) -> Unit) {
-    val exception = arrayOfNulls<RuntimeException>(1)
-    val runnable: () -> Unit = {
-      val service = serviceRef.get()
-      if (service === null) {
-        @Suppress("ThrowableNotThrown")
-        exception[0] = IllegalStateException("service has terminated")
-      } else {
-        try {
-          operation(service)
-        } catch (e: RuntimeException) {
-          exception[0] = e
-        }
+  private fun runAsyncOnMainThreadWithService(operation: (MainService) -> Unit) {
+    val postSucceeded = serviceRef.get().let { service ->
+      if (service === null) false else mainHandler.post { operation(service) }
+    }
+    if (! postSucceeded) {
+      logger.warn("posting to service failed")
+    }
+  }
+
+}
+
+private class ConnectivityTestListenerImpl(val mainHandler: Handler, val serviceRef: WeakReference<MainService>) : ConnectivityTestListener {
+
+  override fun onStateChange(instance: ConnectivityTest) {
+    serviceRef.get()?.also {service ->
+      mainHandler.post {
+        service.onConnectivityTestRunningStateChange()
       }
     }
-
-    val postCondition = ConditionVariable()
-    val postSuccessful = mainHandler.post {
-      try {
-        runnable()
-      } finally {
-        postCondition.open()
-      }
-    }
-
-    if (! postSuccessful) {
-      throw IllegalStateException("unable to post message to handler")
-    }
-
-    if (! postCondition.block(2000L)) {
-      throw IllegalStateException("timeout waiting for main thread to process the request")
-    }
-    
-    exception[0]?.also { throw it }
   }
 
 }
